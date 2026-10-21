@@ -135,8 +135,7 @@ RUN test -f package-lock.json \
 # NODE_ENV-derived `omit=dev`, so the builder is independent of whatever
 # NODE_ENV the surrounding build environment exports. The runtime stage keeps
 # its own `ENV NODE_ENV=production`; this only affects the builder install.
-RUN --mount=type=cache,id=92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
-  npm ci --include=optional --include=dev --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
+#
 # `npm rebuild <pkg>` re-runs the package's own install script, so under npm 11 +
 # `--ignore-scripts` on the parent `npm ci` it depends on npm's script-allowlist
 # machinery correctly re-enabling that one package's script. Some self-hosted build
@@ -147,8 +146,18 @@ RUN --mount=type=cache,id=92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=
 # node-gyp comes from npm's own bundled copy (deterministic, already in the image)
 # instead of `npx --yes`, which would install an arbitrary registry version
 # on-demand and run its lifecycle scripts (Sonar docker:S6505).
+#
+# ONE install, ONE instruction — two rules that the v3.8.53 Docker build broke:
+#   1. A second `npm ci` would wipe what the first one installed: `npm ci`
+#      removes node_modules before installing, so a follow-up install without
+#      `--include=dev` would drop the devDependencies the build needs.
+#   2. A comment line inside a continued instruction is NOT a comment to
+#      BuildKit: the comment is dropped but the line continuation stays open,
+#      so the NEXT instruction is glued onto the current one. The v3.8.53
+#      build died with `npm error Unknown cli flag: - --mount` because the
+#      following `RUN --mount=…` had been appended to the `npm ci` command.
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
-  npm ci --include=optional --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
+  npm ci --include=optional --include=dev --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
   && (cd node_modules/better-sqlite3 \
       && if [ -n "${NODE_DIST_URL}" ]; then export NODEJS_ORG_MIRROR="${NODE_DIST_URL}"; fi \
       && node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --force_build=1) \

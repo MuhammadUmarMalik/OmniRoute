@@ -245,7 +245,7 @@ The repository ships a multi-stage Dockerfile (`Dockerfile`). Four stages are ex
 
 | Stage         | Base image            | Purpose                                                                                                                                                                                                                                                                     |
 | ------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `builder`     | `node:26-trixie-slim` | Installs deps (`npm ci --legacy-peer-deps`) and runs `npm run build` (Turbopack by default — see Build-time resources below)                                                                                                                                                |
+| `builder`     | `node:26-trixie-slim` | Installs deps (`npm ci --include=optional --include=dev --legacy-peer-deps --ignore-scripts`) and runs `npm run build` (Turbopack by default — see Build-time resources below)                                                                                              |
 | `runner-base` | `node:26-trixie-slim` | Production runtime with the Next.js standalone output. **No provider CLIs bundled.**                                                                                                                                                                                        |
 | `runner-cli`  | `runner-base`         | Adds `git`, `docker.io`, `docker-compose` and global CLIs: `@openai/codex`, `@anthropic-ai/claude-code`, `droid`, `openclaw`. **Pick this for agentic workflows.**                                                                                                          |
 | `runner-web`  | `runner-base`         | Adds Playwright + a Chromium browser (`--with-deps`) for web-session providers: `gemini-web`, `claude-web`, `claude-turnstile`. **Pick this when you use those providers** — the plain image fails at request time without it (see the `-web` note under Release Channels). |
@@ -312,6 +312,35 @@ Measured on this tree (`--target runner-base`, `OMNIROUTE_BUILD_MEMORY_MB=6144`)
 | Turbopack | 8 GiB / 16 GiB    | OOM-killed at both, silently  |
 | webpack   | 8 GiB             | build worker SIGKILLed        |
 | webpack   | 12 GiB            | succeeded, peaked at 11.1 GiB |
+
+### Build failure: "Failed to load next.config.mjs"
+
+If the build dies about a second into the `builder` stage with
+
+```
+▲ Next.js 16.3.8 (webpack)
+⨯ Failed to load next.config.mjs, see more info here https://nextjs.org/docs/messages/next-config-error
+> Build error occurred
+Error: Cannot find package 'fumadocs-mdx' imported from /app/next.config.mjs
+    at ignore-listed frames {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+```
+
+the cause is **not** the Node version and **not** a missing file in the build
+context: `fumadocs-mdx` is a _devDependency_ that `next.config.mjs` imports, and
+npm omits devDependencies whenever `NODE_ENV=production` is exported in the
+build environment. Self-hosting panels that export `NODE_ENV=production` for
+the whole build (Coolify and Dokploy among them) trigger exactly that, and the
+same omission would also break the CSS pipeline (`@tailwindcss/postcss`,
+`tailwindcss`) and the React Compiler (`babel-plugin-react-compiler`).
+
+The `Dockerfile` already pins this down: the builder install passes
+`--include=dev`, npm's documented override for the `NODE_ENV`-derived
+`omit=dev`, so the builder is independent of the ambient `NODE_ENV`. On an
+older image, rebuild from the current `Dockerfile` (or add `--include=dev` to
+your own build) rather than changing the base image — `node:24` and `node:26`
+both fail identically here, because the package was never installed.
 
 ### Runtime defaults
 

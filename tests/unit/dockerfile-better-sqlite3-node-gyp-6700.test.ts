@@ -88,7 +88,7 @@ const fs = require("node:fs"), path = require("node:path"), assert = require("no
 const command = path.basename(process.argv[1]), args = process.argv.slice(2), root = process.env.PROBE_ROOT;
 const events = fs.existsSync(process.env.PROBE_LOG) ? fs.readFileSync(process.env.PROBE_LOG, "utf8").trim().split("\\n").filter(Boolean) : [];
 if (command === "npm") {
-  assert.deepEqual(args, ["ci", "--include=optional", "--no-audit", "--no-fund", "--legacy-peer-deps", "--ignore-scripts"]);
+  assert.deepEqual(args, ["ci", "--include=optional", "--include=dev", "--no-audit", "--no-fund", "--legacy-peer-deps", "--ignore-scripts"]);
   assert.equal(events.length, 0); assert.equal(process.cwd(), root);
 } else if (args[0] === process.env.PROBE_GYP) {
   assert.deepEqual(args, [process.env.PROBE_GYP, "rebuild", "--force_build=1"]);

@@ -117,6 +117,26 @@ ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 # are reproducible.
 RUN test -f package-lock.json \
   || (echo "package-lock.json is required for reproducible Docker builds" >&2 && exit 1)
+# `--include=dev` is REQUIRED, not cosmetic. npm omits devDependencies whenever
+# NODE_ENV=production is set in the build environment (npm config `omit`
+# defaults to ["dev"] under NODE_ENV=production). Build hosts that export
+# NODE_ENV=production for the whole build — Coolify, Dokploy and several
+# self-hosting panels do exactly that — therefore ran `npm ci` WITHOUT the
+# devDependencies, and the build then died ~1s into `next build` with:
+#   ▲ Next.js 16.3.8 (webpack)
+#   ⨯ Failed to load next.config.mjs
+#   > Build error occurred
+#   Error: Cannot find package 'fumadocs-mdx' imported from <root>/next.config.mjs
+#     at ignore-listed frames { code: 'ERR_MODULE_NOT_FOUND' }
+# because next.config.mjs imports `fumadocs-mdx/next` (a devDependency), and
+# the CSS pipeline needs @tailwindcss/postcss + tailwindcss and the React
+# Compiler needs babel-plugin-react-compiler — all devDependencies.
+# `--include=dev` is the explicit, documented npm override for the
+# NODE_ENV-derived `omit=dev`, so the builder is independent of whatever
+# NODE_ENV the surrounding build environment exports. The runtime stage keeps
+# its own `ENV NODE_ENV=production`; this only affects the builder install.
+RUN --mount=type=cache,id=92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
+  npm ci --include=optional --include=dev --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
 # `npm rebuild <pkg>` re-runs the package's own install script, so under npm 11 +
 # `--ignore-scripts` on the parent `npm ci` it depends on npm's script-allowlist
 # machinery correctly re-enabling that one package's script. Some self-hosted build
